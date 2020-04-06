@@ -4,7 +4,7 @@
  * included below. This software may be subject to other third party and contributor
  * rights, including patent rights, and no such rights are granted under this license.
  *
- * Copyright (c) 2016, Dash Industry Forum.
+ * Copyright (c) 2020, Unified Streaming.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -52,12 +52,14 @@ let w = [];
 let prev_w = [];
 let sum_w = [];
 let Q1=0;
-let Q2=0;
-let B_target=0.5;
+
 let prevqualityL2A=0;
 let counter=0;
 let segment_request_start_s=0;
 let segment_download_finish_s=0;
+let regret=0;
+let residual=0;
+let omega=0;
 
 
 function L2ARule(config) {
@@ -254,23 +256,7 @@ function L2ARule(config) {
        return minIndex;
    } 
 
-   function indexofMax(arr) {
-    if (arr.length === 0) {
-        return -1;
-    }
-
-    var max = arr[0];
-    var maxIndex = 0;
-
-    for (var i = 0; i < arr.length; i++) {
-        if (arr[i] >= max) {
-            maxIndex = i;
-            max = arr[i];
-        }
-    }
-
-    return maxIndex;
-} 
+ 
 
    function dotmultiplication(arr1,arr2) {
        if (arr1.length != arr2.length) {
@@ -331,7 +317,7 @@ function L2ARule(config) {
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
         const horizon=5;
-        const VL = Math.pow(horizon,0.4);
+        const VL = Math.pow(horizon,0.2);
         const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));
         let diff1=[];
         const mediaInfo = rulesContext.getMediaInfo();
@@ -413,15 +399,11 @@ function L2ARule(config) {
 
                 /////////////////////////////////////////////////////////
 
-                //General comments: 1. Figure out scales of a)buffer (s) and b) bitrates (bps) and throughput (kbps) DONE
-                //                   2. Initialization of Q1, Q2 w and prev_w (currently hard coded).
-                //                   3. Verify initialization for alpha and VL
-                //                   4. Implement true previous throughput let c_throughput=V*(bitrates[prevQuality])/(1000*(segment_download_finish_s-segment_request_start_s));
-                const V=L2AState.lastSegmentDurationS;
+                //Main adaptation logic of L2A-LL
                 console.log('Segment duration:',L2AState.lastSegmentDurationS)
-                console.log('Download duration:', segment_download_finish_s-segment_request_start_s) 
-                //const c_throughput=V*(bitrates[prevqualityL2A]/1000)/(1000*(segment_download_finish_s-segment_request_start_s));
-                console.log('Computed throughput:',c_throughput);
+               // console.log('Download duration:', segment_download_finish_s-segment_request_start_s) 
+               // console.log('Computed throughput:',c_throughput);
+               let V=L2AState.lastSegmentDurationS;
                 if (w.length==0){
                     Q1=0;
                    // Q2=0;
@@ -461,24 +443,13 @@ function L2ARule(config) {
                     
                 console.log('Q1 pre-update:',Q1);        
 
-               //if(dotmultiplication(bitrates,prev_w)>c_throughput){
-                //    Q1=Math.max(0,Q1+V-V*dotmultiplication(prev_w,bitrates)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-B_target/horizon-V*dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput));
-               // }
-                //else{
-                 //   Q1=Math.max(0,Q1+V-V*dotmultiplication(prev_w,bitrates)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-B_target/horizon-V*dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput));
-                //}
-               
                if(bitrates[prevqualityL2A]>c_throughput){
-                   if (Q1<VL){Q1=3*VL;}
-               
+                   if (Q1<VL){
+                       Q1=3*VL;
+                    }              
                 }
-               // else{
-                //    Q1=Q1;//Math.max(0,Q1+V*dotmultiplication(prev_w,bitrates)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput));
-                
-                //}
                 Q1=Math.max(0,Q1+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
-                
-                
+
                 console.log('Q1 post-update:',Q1);        
            
                 let temp=[];
@@ -488,9 +459,24 @@ function L2ARule(config) {
                     temp[i]=Math.abs(bitrates[i]-dotmultiplication(w,bitrates));  
                 }
                 console.log('Verification of argmin:',bitrates, dotmultiplication(w,bitrates))
-                qualityL2A = indexOfMin(temp);//indexofMax(w);
+                qualityL2A = indexOfMin(temp);
+                counter=counter+1;
+                console.log('Segment counter:',counter)  
+                for (let i = 0; i < bitrateCount; ++i) {
+                    if (bitrates[i]<c_throughput){
+                     omega=i;
+                    }
+                }
+                regret=((counter-1)*regret+(V/c_throughput)*(-bitrates[qualityL2A]+bitrates[omega]))/counter;
+                if (V-V*bitrates[qualityL2A]/c_throughput<0){
+                
+                    residual=(residual*(counter-1)+V*bitrates[qualityL2A]/c_throughput-V)/counter
+                }
                 prevqualityL2A=qualityL2A;
-                console.log('Quality L2A:',qualityL2A);        
+                   
+                console.log('Regret:',regret);   
+                console.log('residual:',residual); 
+                console.log('Quality L2A:',qualityL2A);     
                 quality=qualityL2A;
                 switchRequest.quality = quality;       
                 switchRequest.reason.throughput = throughput;
@@ -510,9 +496,7 @@ function L2ARule(config) {
                 L2AState.state = L2A_STATE_STARTUP;
                 clearL2AStateOnSeek(L2AState);
         }
-        console.log('Quality BOLA:',switchRequest.quality); 
-        counter=counter+1;
-        console.log('Segment counter:',counter)  
+       
 
         return switchRequest;
     }
