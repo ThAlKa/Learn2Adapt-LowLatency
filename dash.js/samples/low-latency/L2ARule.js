@@ -317,7 +317,7 @@ function L2ARule(config) {
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
         const horizon=5;
-        const VL = Math.pow(horizon,0.2);
+        const VL = Math.pow(horizon,0.5);
         const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));
         let diff1=[];
         const mediaInfo = rulesContext.getMediaInfo();
@@ -445,7 +445,7 @@ function L2ARule(config) {
 
                if(bitrates[prevqualityL2A]>c_throughput){
                    if (Q1<VL){
-                       Q1=3*VL;
+                       Q1=4*VL;
                     }              
                 }
                 Q1=Math.max(0,Q1+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
