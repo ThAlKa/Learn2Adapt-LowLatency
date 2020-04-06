@@ -385,7 +385,7 @@ function BolaRule(config) {
 
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
-        console.log('In BOLA');
+        
         if (!rulesContext || !rulesContext.hasOwnProperty('getMediaInfo') || !rulesContext.hasOwnProperty('getMediaType') ||
             !rulesContext.hasOwnProperty('getScheduleController') || !rulesContext.hasOwnProperty('getStreamInfo') ||
             !rulesContext.hasOwnProperty('getAbrController') || !rulesContext.hasOwnProperty('useBufferOccupancyABR')) {
