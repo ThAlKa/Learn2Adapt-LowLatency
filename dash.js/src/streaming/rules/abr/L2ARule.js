@@ -30,7 +30,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-// For a description of the Learn2Adapt (L2A) adaptive bitrate (ABR) algorithm, see http://arxiv.org/abs/1601.06748
+// For a description of the Learn2Adapt-LowLatency (L2A-LL) bitrate adaptation algorithm, see http://arxiv.org/abs/ 
 
 import MetricsConstants from '../../constants/MetricsConstants';
 import SwitchRequest from '../SwitchRequest';
@@ -48,18 +48,16 @@ const L2A_STATE_STARTUP        = 1;
 const L2A_STATE_STEADY         = 2;
 
 
-let w = [];
-let prev_w = [];
-let sum_w = [];
-let Q1=0;
-
-let prevqualityL2A=0;
-let counter=0;
+let w = [];//Vector of probabilities associated with bitrate decisions
+let prev_w = [];//Vector of probabilities associated with bitrate decisions calculated in the previous step
+let Q=0;//Initialization of Lagrangian multiplier (This keeps track of the buffer displacement)
 let segment_request_start_s=0;
 let segment_download_finish_s=0;
+/*Used to compute the regret and constraint residual metrics
+let counter=0;
 let regret=0;
 let residual=0;
-let omega=0;
+let omega=0;*/
 
 
 function L2ARule(config) {
@@ -161,7 +159,6 @@ function L2ARule(config) {
     }
 
     function onBufferEmpty() {
-        // if we rebuffer, we don't want the placeholder buffer to artificially raise L2A quality
         for (const mediaType in L2AStateDict) {
             if (L2AStateDict.hasOwnProperty(mediaType) && L2AStateDict[mediaType].state === L2A_STATE_STEADY) {
                 L2AStateDict[mediaType].placeholderBuffer = 0;
@@ -170,8 +167,6 @@ function L2ARule(config) {
     }
 
     function onPlaybackSeeking() {
-        // TODO: 1. Verify what happens if we seek mid-fragment.
-        // TODO: 2. If e.g. we have 10s fragments and seek, we might want to download the first fragment at a lower quality to restart playback quickly.
         for (const mediaType in L2AStateDict) {
             if (L2AStateDict.hasOwnProperty(mediaType)) {
                 const L2AState = L2AStateDict[mediaType];
@@ -237,89 +232,71 @@ function L2ARule(config) {
         }
     }
 
-
    function indexOfMin(arr) {
-       if (arr.length === 0) {
+        // Calculates teh index of the minimum value of an array
+        if (arr.length === 0) {
            return -1;
-       }
-   
+        }
        var min = arr[0];
-       var minIndex = 0;
-   
+       var minIndex = 0;  
        for (var i = 0; i < arr.length; i++) {
            if (arr[i] <= min) {
                minIndex = i;
                min = arr[i];
-           }
-       }
-   
-       return minIndex;
-   } 
-
- 
+            }
+        }
+        return minIndex;
+    } 
 
    function dotmultiplication(arr1,arr2) {
+        // Dot multiplication of two arrays
        if (arr1.length != arr2.length) {
            return -1;
        }
-   
        var sumdot =0;
-   
        for (var i = 0; i < arr1.length; i++) {
            sumdot=sumdot+arr1[i]*arr2[i];
-       }
-   
+       } 
        return sumdot;
    } 
    
-   function Euclidean_projection(arr)
-   {
-
-    //project an n-dim vector y to the simplex Dn
-    // Dn = { x : x n-dim, 1 >= x >= 0, sum(x) = 1}
-
-    //Algorithm is explained at http://arxiv.org/abs/1101.6081
-          const m = arr.length
-          var bget = false;
-          var arr2=[];
-          for (let ii = 0; ii < m; ++ii) {
-         arr2[ii]=arr[ii];
-       }
-           var s =arr.sort(function(a, b){return b-a}); 
-           var tmpsum = 0;
-           var tmax = 0;
-           var x=[];
-           
-           
-           for (let ii = 0; ii < m-1; ++ii) {
-           
-               tmpsum = tmpsum + s[ii];
-               
-               tmax = (tmpsum - 1)/(ii+1);
-              
-               if (tmax >= s[ii+1]){
-               
-                   bget = true;
-                   break;
-               } 
-                
-           }
-  
-       if (!bget){
+   function Euclidean_projection(arr) {
+        //project an n-dim vector y to the simplex Dn
+        // Dn = { x : x n-dim, 1 >= x >= 0, sum(x) = 1}
+        //Algorithm is explained at http://arxiv.org/abs/1101.6081
+        const m = arr.length
+        var bget = false;
+        var arr2=[];
+        for (let ii = 0; ii < m; ++ii) {
+            arr2[ii]=arr[ii];
+        }
+        var s =arr.sort(function(a, b){return b-a}); 
+        var tmpsum = 0;
+        var tmax = 0;
+        var x=[];   
+        for (let ii = 0; ii < m-1; ++ii) {
+            tmpsum = tmpsum + s[ii];
+            tmax = (tmpsum - 1)/(ii+1);
+            if (tmax >= s[ii+1]){
+                bget = true;
+                break;
+            }      
+        }
+        if (!bget){
            tmax = (tmpsum + s[m-1] -1)/m;
-       }
+        }
        for (let ii = 0; ii < m; ++ii) {
-        x[ii] = Math.max(arr2[ii]-tmax,0);
-       }
-       return x;
-   }
+            x[ii] = Math.max(arr2[ii]-tmax,0);
+        }
+        return x;
+    }
 
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
-        const horizon=5;
-        const VL = Math.pow(horizon,0.5);
-        const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));
-        let diff1=[];
+        const horizon=5;//Optimization horizon
+        const VL = Math.pow(horizon,0.5);//Cautiousness parameter
+        const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));//Step size
+        let diff1=[]//Used to calculate the difference between consecutive decisions (w-w_prev) 
         const mediaInfo = rulesContext.getMediaInfo();
         const mediaType = rulesContext.getMediaType();
         const bitrates = mediaInfo.bitrateList.map(b => b.bandwidth);
@@ -331,21 +308,17 @@ function L2ARule(config) {
         const isDynamic = streamInfo && streamInfo.manifestInfo && streamInfo.manifestInfo.isDynamic;
         const useL2AABR = rulesContext.useL2AABR();
         const bufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
-        const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);
+        const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);     
+        const c_throughput=throughput/1000;//Throughput in Mbps
         
-        const c_throughput=throughput/1000;
-        console.log('Throughput:',c_throughput);
-       
-                
+        console.log('Throughput:',c_throughput);        
         console.log('VL:',VL);        
         console.log('Alpha:',alpha);        
-        
 
-        
         const safeThroughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         const latency = throughputHistory.getAverageLatency(mediaType);
         let quality;
-        let qualityL2A;
+       
 
 
         if (!rulesContext || !rulesContext.hasOwnProperty('getMediaInfo') || !rulesContext.hasOwnProperty('getMediaType') ||
@@ -374,7 +347,7 @@ function L2ARule(config) {
         switchRequest.reason.throughput = throughput;
         switchRequest.reason.latency = latency;
 
-        if (isNaN(throughput)) { // isNaN(throughput) === isNaN(safeThroughput) === isNaN(latency)
+        if (isNaN(throughput)) {
             // still starting up - not enough information
             return switchRequest;
         }
@@ -400,57 +373,46 @@ function L2ARule(config) {
                 /////////////////////////////////////////////////////////
 
                 //Main adaptation logic of L2A-LL
-                console.log('Segment duration:',L2AState.lastSegmentDurationS)
-               // console.log('Download duration:', segment_download_finish_s-segment_request_start_s) 
-               // console.log('Computed throughput:',c_throughput);
-               let V=L2AState.lastSegmentDurationS;
-                if (w.length==0){
-                    Q1=0;
-                   // Q2=0;
+                //console.log('Segment duration:',L2AState.lastSegmentDurationS)
+                // console.log('Download duration:', segment_download_finish_s-segment_request_start_s) 
+                // console.log('Computed throughput:',c_throughput);
+                let V=L2AState.lastSegmentDurationS;
+                if (w.length==0){//Initialization of w and w_prev
+                    Q=0;
                     for (let i = 0; i < bitrateCount; ++i) {
                     if (i==0){
                             w[i]=0.33;
                             prev_w[i]=1
-                            sum_w[i]=0;
                         }
                         else{
                             w[i]=0.33;
                             prev_w[i]=0;
-                            sum_w[i]=0;   
                         }
                     }
                 } 
               
-                
-                    for (let i = 0; i < bitrateCount; ++i) {
-                        bitrates[i]=bitrates[i]/(1000*1000);   
-                      // sum_w[i]=sum_w[i]+(bitrates[i])*(-VL-(V*Q1)/Math.min(2*bitrates[bitrateCount-1],c_throughput));
-                        sum_w[i]=sum_w[i]+(V*bitrates[i])*((Q1-VL)/Math.min(2*bitrates[bitrateCount-1],c_throughput));    // (-VL-(V*Q1)/Math.min(2*bitrates[bitrateCount-1],c_throughput));
-                        w[i]=prev_w[i]-(1/(2*alpha))*sum_w[i];             
-                        sum_w[i]=0; //(bitrates[i]/(2*alpha))*(-VL+((Q1-Q2)*V)/Math.min(2*bitrates[bitrateCount-1],c_throughput));//-Q2
-                        diff1[i]=w[i]-prev_w[i];
-                     
-                    }                        
-                
+                for (let i = 0; i < bitrateCount; ++i) {
+                    bitrates[i]=bitrates[i]/(1000*1000);   //Bitrates in Mbps
+                    w[i]=prev_w[i]-(1/(2*alpha))*(V*bitrates[i])*((Q-VL)/Math.min(2*bitrates[bitrateCount-1],c_throughput));  //Lagrangian descent 
+                    diff1[i]=w[i]-prev_w[i]; 
+                }                        
+            
                 console.log('w pre-proj:',w);
                     
                 w=Euclidean_projection(w);
                 
                 console.log('w post-proj:',w);        
-            
-                  
+    
+                console.log('Q pre-update:',Q);        
 
-                    
-                console.log('Q1 pre-update:',Q1);        
-
-               if(bitrates[prevqualityL2A]>c_throughput){
-                   if (Q1<VL){
-                       Q1=4*VL;
+               if(bitrates[L2AState.lastQuality]>c_throughput){//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch
+                   if (Q<VL){
+                       Q=4*VL;
                     }              
                 }
-                Q1=Math.max(0,Q1+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
+                Q=Math.max(0,Q+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
 
-                console.log('Q1 post-update:',Q1);        
+                console.log('Q post-update:',Q);        
            
                 let temp=[];
             
@@ -458,26 +420,28 @@ function L2ARule(config) {
                     prev_w[i]=w[i];            
                     temp[i]=Math.abs(bitrates[i]-dotmultiplication(w,bitrates));  
                 }
-                console.log('Verification of argmin:',bitrates, dotmultiplication(w,bitrates))
-                qualityL2A = indexOfMin(temp);
-                counter=counter+1;
+                //console.log('Verification of argmin:',bitrates, dotmultiplication(w,bitrates))
+                
+                quality = indexOfMin(temp);// Quality is calculated as argmin of the aboslute differnce between available bitrates (bitrates[i]) and bitrate estimation (dotmultiplication(w,bitrates))
+               
+                /*Used to compute the regret and constraint residual metrics
+                 counter=counter+1;
                 console.log('Segment counter:',counter)  
                 for (let i = 0; i < bitrateCount; ++i) {
                     if (bitrates[i]<c_throughput){
-                     omega=i;
+                     omega=i;//benchmark distribution
                     }
                 }
-                regret=((counter-1)*regret+(V/c_throughput)*(-bitrates[qualityL2A]+bitrates[omega]))/counter;
+                
+                 regret=((counter-1)*regret+(V/c_throughput)*(-bitrates[qualityL2A]+bitrates[omega]))/counter;
                 if (V-V*bitrates[qualityL2A]/c_throughput<0){
                 
                     residual=(residual*(counter-1)+V*bitrates[qualityL2A]/c_throughput-V)/counter
                 }
-                prevqualityL2A=qualityL2A;
-                   
                 console.log('Regret:',regret);   
-                console.log('residual:',residual); 
-                console.log('Quality L2A:',qualityL2A);     
-                quality=qualityL2A;
+                console.log('residual:',residual); */
+                
+                console.log('Quality:',quality);     
                 switchRequest.quality = quality;       
                 switchRequest.reason.throughput = throughput;
                 switchRequest.reason.latency = latency;
