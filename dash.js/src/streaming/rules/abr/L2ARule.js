@@ -66,7 +66,6 @@ function L2ARule(config) {
     const context = this.context;
 
     const dashMetrics = config.dashMetrics;
-    const mediaPlayerModel = config.mediaPlayerModel;
     const eventBus = EventBus(context).getInstance();
 
     let instance,
@@ -77,43 +76,20 @@ function L2ARule(config) {
         logger = Debug(context).getInstance().getLogger(instance);
         resetInitialSettings();
 
-        eventBus.on(Events.BUFFER_EMPTY, onBufferEmpty, instance);
         eventBus.on(Events.PLAYBACK_SEEKING, onPlaybackSeeking, instance);
         eventBus.on(Events.MEDIA_FRAGMENT_LOADED, onMediaFragmentLoaded, instance);
         eventBus.on(Events.METRIC_ADDED, onMetricAdded, instance);
         eventBus.on(Events.QUALITY_CHANGE_REQUESTED, onQualityChangeRequested, instance);
     }
 
-
-   function calculateL2AParameters( bitrates) {
-        const gp =1;// (utilities[highestUtilityIndex] - 1) / (bufferTime / MINIMUM_BUFFER_S - 1);
-        const Vp = 1;//MINIMUM_BUFFER_S / gp;
-        return {gp: gp, Vp: Vp};
-  
-        }
-     
-
     function getInitialL2AState(rulesContext) {
         const initialState = {};
         const mediaInfo = rulesContext.getMediaInfo();
         const bitrates = mediaInfo.bitrateList.map(b => b.bandwidth)/1000;
-        const stableBufferTime = mediaPlayerModel.getStableBufferTime();
-        const params = calculateL2AParameters(bitrates);
-
-        if (!params) {
-            // only happens when there is only one bitrate level
-            initialState.state = L2A_STATE_ONE_BITRATE;
-        } else {
-            initialState.state = L2A_STATE_STARTUP;
-
-            initialState.bitrates = bitrates;
-            initialState.stableBufferTime = stableBufferTime;
-            initialState.Vp = params.Vp;
-            initialState.gp = params.gp;
-            initialState.lastQuality = 0;
-            clearL2AStateOnSeek(initialState);
-        }
-
+        initialState.state = L2A_STATE_STARTUP;
+        initialState.bitrates = bitrates;
+        initialState.lastQuality = 0;
+        clearL2AStateOnSeek(initialState);
         return initialState;
     }
 
@@ -127,43 +103,13 @@ function L2ARule(config) {
         L2AState.lastSegmentFinishTimeMs = NaN;
     }
 
-   function checkL2AStateStableBufferTime(L2AState, mediaType) {
-        const stableBufferTime = mediaPlayerModel.getStableBufferTime();
-        if (L2AState.stableBufferTime !== stableBufferTime) {
-            const params = calculateL2AParameters(stableBufferTime, L2AState.bitrates, L2AState.utilities);
-            if (params.Vp !== L2AState.Vp || params.gp !== L2AState.gp) {
-                const bufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
-                let effectiveBufferLevel = bufferLevel + L2AState.placeholderBuffer;
-                effectiveBufferLevel -= MINIMUM_BUFFER_S;
-                effectiveBufferLevel *= params.Vp / L2AState.Vp;
-                effectiveBufferLevel += MINIMUM_BUFFER_S;
-
-                L2AState.stableBufferTime = stableBufferTime;
-                L2AState.Vp = params.Vp;
-                L2AState.gp = params.gp;
-                L2AState.placeholderBuffer = Math.max(0, effectiveBufferLevel - bufferLevel);
-            }
-        }
-    }
-
     function getL2AState(rulesContext) {
         const mediaType = rulesContext.getMediaType();
         let L2AState = L2AStateDict[mediaType];
         if (!L2AState) {
             L2AState = getInitialL2AState(rulesContext);
             L2AStateDict[mediaType] = L2AState;
-        } else if (L2AState.state !== L2A_STATE_ONE_BITRATE) {
-            checkL2AStateStableBufferTime(L2AState, mediaType);
-        }
         return L2AState;
-    }
-
-    function onBufferEmpty() {
-        for (const mediaType in L2AStateDict) {
-            if (L2AStateDict.hasOwnProperty(mediaType) && L2AStateDict[mediaType].state === L2A_STATE_STEADY) {
-                L2AStateDict[mediaType].placeholderBuffer = 0;
-            }
-        }
     }
 
     function onPlaybackSeeking() {
@@ -177,7 +123,6 @@ function L2ARule(config) {
             }
         }
     }
-
 
     function onMediaFragmentLoaded(e) {
         if (e && e.chunk && e.chunk.mediaInfo) {
@@ -315,7 +260,6 @@ function L2ARule(config) {
         console.log('VL:',VL);        
         console.log('Alpha:',alpha);        
 
-        const safeThroughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);
         const latency = throughputHistory.getAverageLatency(mediaType);
         let quality;
        
@@ -472,7 +416,6 @@ function L2ARule(config) {
     function reset() {
         resetInitialSettings();
 
-        eventBus.off(Events.BUFFER_EMPTY, onBufferEmpty, instance);
         eventBus.off(Events.PLAYBACK_SEEKING, onPlaybackSeeking, instance);
         eventBus.off(Events.MEDIA_FRAGMENT_LOADED, onMediaFragmentLoaded, instance);
         eventBus.off(Events.METRIC_ADDED, onMetricAdded, instance);
