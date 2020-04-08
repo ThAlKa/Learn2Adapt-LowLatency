@@ -53,6 +53,7 @@ let prev_w = [];//Vector of probabilities associated with bitrate decisions calc
 let Q=0;//Initialization of Lagrangian multiplier (This keeps track of the buffer displacement)
 let segment_request_start_s=0;
 let segment_download_finish_s=0;
+let B_target=1.5;//Target buffer level
 /*Used to compute the regret and constraint residual metrics
 let counter=0;
 let regret=0;
@@ -354,7 +355,7 @@ function L2ARule(config) {
                     temp[i]=Math.abs(bitrates[i]-dotmultiplication(w,bitrates));  
                 }
                 
-                if (bitrates[indexOfMin(temp)]>=c_throughput){
+                if ((bitrates[indexOfMin(temp)]>=c_throughput)&&(bufferLevel<B_target)){
                     quality=L2AState.lastQuality;
                 }
                 else{
