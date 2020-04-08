@@ -254,7 +254,8 @@ function L2ARule(config) {
         const isDynamic = streamInfo && streamInfo.manifestInfo && streamInfo.manifestInfo.isDynamic;
         const useL2AABR = rulesContext.useL2AABR();
         const bufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
-        const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);     
+        const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);   
+        const safeThroughput = throughputHistory.getSafeAverageThroughput(mediaType, isDynamic);  
         const c_throughput=throughput/1000;//Throughput in Mbps  
         const latency = throughputHistory.getAverageLatency(mediaType);
         let quality;
