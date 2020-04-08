@@ -109,6 +109,7 @@ function L2ARule(config) {
         if (!L2AState) {
             L2AState = getInitialL2AState(rulesContext);
             L2AStateDict[mediaType] = L2AState;
+        }
         return L2AState;
     }
 
@@ -238,8 +239,8 @@ function L2ARule(config) {
 
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
-        const horizon=5;//Optimization horizon
-        const VL = Math.pow(horizon,0.3);//Cautiousness parameter
+        const horizon=4;//Optimization horizon
+        const VL = Math.pow(horizon,0.5);//Cautiousness parameter
         const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));//Step size
         let diff1=[]//Used to calculate the difference between consecutive decisions (w-w_prev) 
         const mediaInfo = rulesContext.getMediaInfo();
@@ -317,7 +318,7 @@ function L2ARule(config) {
                 if (w.length==0){//Initialization of w and w_prev
                     Q=0;
                     for (let i = 0; i < bitrateCount; ++i) {
-                    if (i==0){
+                        if (i==0){
                             w[i]=0.33;
                             prev_w[i]=1
                         }
@@ -336,9 +337,9 @@ function L2ARule(config) {
                     
                 w=Euclidean_projection(w);
                 
-               if(bitrates[L2AState.lastQuality]>c_throughput){//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch
+               if(bitrates[L2AState.lastQuality]>=c_throughput){//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch
                    if (Q<VL){
-                       Q=4*VL;
+                       Q=2*VL;
                     }              
                 }
                 Q=Math.max(0,Q+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
@@ -371,9 +372,10 @@ function L2ARule(config) {
                 switchRequest.reason.latency = latency;
                 L2AState.state = L2A_STATE_STARTUP;
                 clearL2AStateOnSeek(L2AState);
+            
         }
-       
-
+    
+    
         return switchRequest;
     }
 
