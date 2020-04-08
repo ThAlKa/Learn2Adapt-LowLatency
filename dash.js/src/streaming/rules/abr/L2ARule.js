@@ -240,7 +240,7 @@ function L2ARule(config) {
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
         const horizon=4;//Optimization horizon
-        const VL = Math.pow(horizon,0.5);//Cautiousness parameter
+        const VL = Math.pow(horizon,0.3);//Cautiousness parameter
         const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));//Step size
         let diff1=[]//Used to calculate the difference between consecutive decisions (w-w_prev) 
         const mediaInfo = rulesContext.getMediaInfo();
@@ -340,7 +340,7 @@ function L2ARule(config) {
                 
                if(bitrates[L2AState.lastQuality]>=c_throughput){//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch
                    if (Q<VL){
-                       Q=2*VL;
+                       Q=horizon*VL;
                     }              
                 }
                 Q=Math.max(0,Q+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
@@ -354,7 +354,12 @@ function L2ARule(config) {
                     temp[i]=Math.abs(bitrates[i]-dotmultiplication(w,bitrates));  
                 }
                 
-                quality = indexOfMin(temp);// Quality is calculated as argmin of the aboslute differnce between available bitrates (bitrates[i]) and bitrate estimation (dotmultiplication(w,bitrates))
+                if (bitrates[indexOfMin(temp)]>=c_throughput){
+                    quality=L2AState.lastQuality;
+                }
+                else{
+                    quality = indexOfMin(temp);
+                }// Quality is calculated as argmin of the aboslute differnce between available bitrates (bitrates[i]) and bitrate estimation (dotmultiplication(w,bitrates))
                
                 switchRequest.quality = quality;       
                 switchRequest.reason.throughput = throughput;
