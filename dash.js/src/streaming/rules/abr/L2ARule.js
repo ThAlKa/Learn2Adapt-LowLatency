@@ -240,9 +240,9 @@ function L2ARule(config) {
 
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
-        const horizon=4;//Optimization horizon
-        const VL = Math.pow(horizon,0.3);//Cautiousness parameter
-        const alpha =Math.max(Math.pow(horizon,0.8),VL*Math.sqrt(horizon));//Step size
+        const horizon=8;//Optimization horizon
+        const VL = Math.pow(horizon,0.2);//Cautiousness parameter
+        const alpha =Math.max(Math.pow(horizon,0.7),VL*Math.sqrt(horizon));//Step size
         let diff1=[]//Used to calculate the difference between consecutive decisions (w-w_prev) 
         const mediaInfo = rulesContext.getMediaInfo();
         const mediaType = rulesContext.getMediaType();
