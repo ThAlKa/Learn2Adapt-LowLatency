@@ -239,7 +239,7 @@ function L2ARule(config) {
     function getMaxIndex(rulesContext) {
         const switchRequest = SwitchRequest(context).create();
         const horizon=5;//Optimization horizon
-        const VL = Math.pow(horizon,0.5);//Cautiousness parameter
+        const VL = Math.pow(horizon,0.3);//Cautiousness parameter
         const alpha =Math.max(Math.pow(horizon,1),VL*Math.sqrt(horizon));//Step size
         let diff1=[]//Used to calculate the difference between consecutive decisions (w-w_prev) 
         const mediaInfo = rulesContext.getMediaInfo();
@@ -254,12 +254,7 @@ function L2ARule(config) {
         const useL2AABR = rulesContext.useL2AABR();
         const bufferLevel = dashMetrics.getCurrentBufferLevel(mediaType, true);
         const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);     
-        const c_throughput=throughput/1000;//Throughput in Mbps
-        
-        console.log('Throughput:',c_throughput);        
-        console.log('VL:',VL);        
-        console.log('Alpha:',alpha);        
-
+        const c_throughput=throughput/1000;//Throughput in Mbps  
         const latency = throughputHistory.getAverageLatency(mediaType);
         let quality;
        
@@ -317,9 +312,7 @@ function L2ARule(config) {
                 /////////////////////////////////////////////////////////
 
                 //Main adaptation logic of L2A-LL
-                //console.log('Segment duration:',L2AState.lastSegmentDurationS)
-                // console.log('Download duration:', segment_download_finish_s-segment_request_start_s) 
-                // console.log('Computed throughput:',c_throughput);
+               
                 let V=L2AState.lastSegmentDurationS;
                 if (w.length==0){//Initialization of w and w_prev
                     Q=0;
@@ -340,15 +333,9 @@ function L2ARule(config) {
                     w[i]=prev_w[i]-(1/(2*alpha))*(V*bitrates[i])*((Q-VL)/Math.min(2*bitrates[bitrateCount-1],c_throughput));  //Lagrangian descent 
                     diff1[i]=w[i]-prev_w[i]; 
                 }                        
-            
-                console.log('w pre-proj:',w);
                     
                 w=Euclidean_projection(w);
                 
-                console.log('w post-proj:',w);        
-    
-                console.log('Q pre-update:',Q);        
-
                if(bitrates[L2AState.lastQuality]>c_throughput){//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch
                    if (Q<VL){
                        Q=4*VL;
@@ -356,7 +343,7 @@ function L2ARule(config) {
                 }
                 Q=Math.max(0,Q+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));
 
-                console.log('Q post-update:',Q);        
+                    
            
                 let temp=[];
             
@@ -364,28 +351,9 @@ function L2ARule(config) {
                     prev_w[i]=w[i];            
                     temp[i]=Math.abs(bitrates[i]-dotmultiplication(w,bitrates));  
                 }
-                //console.log('Verification of argmin:',bitrates, dotmultiplication(w,bitrates))
                 
                 quality = indexOfMin(temp);// Quality is calculated as argmin of the aboslute differnce between available bitrates (bitrates[i]) and bitrate estimation (dotmultiplication(w,bitrates))
                
-                /*Used to compute the regret and constraint residual metrics
-                 counter=counter+1;
-                console.log('Segment counter:',counter)  
-                for (let i = 0; i < bitrateCount; ++i) {
-                    if (bitrates[i]<c_throughput){
-                     omega=i;//benchmark distribution
-                    }
-                }
-                
-                 regret=((counter-1)*regret+(V/c_throughput)*(-bitrates[qualityL2A]+bitrates[omega]))/counter;
-                if (V-V*bitrates[qualityL2A]/c_throughput<0){
-                
-                    residual=(residual*(counter-1)+V*bitrates[qualityL2A]/c_throughput-V)/counter
-                }
-                console.log('Regret:',regret);   
-                console.log('residual:',residual); */
-                
-                console.log('Quality:',quality);     
                 switchRequest.quality = quality;       
                 switchRequest.reason.throughput = throughput;
                 switchRequest.reason.latency = latency;
