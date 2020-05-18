@@ -255,7 +255,6 @@ function L2ARule(config) {
         const throughput = throughputHistory.getAverageThroughput(mediaType, isDynamic);     
         const c_throughput=throughput/1000;//Throughput in Mbps
         const react=20;///Reactiveness to throughput drops
-        const cushion=0.15;//Throughput estimation for window=1 allowed variation
         const latency = throughputHistory.getAverageLatency(mediaType);
         let quality;
     
@@ -337,7 +336,7 @@ function L2ARule(config) {
                 
                 w=Euclidean_projection(w);       
 
-                if (bitrates[L2AState.lastQuality]>(cushion+(bitrates[L2AState.lastQuality]*V/(segment_download_finish_s-segment_request_start_s)))){if (Q<VL){Q=horizon*VL*react;}}//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch based on previous throughput measurement
+                if (bitrates[L2AState.lastQuality]>((bitrates[L2AState.lastQuality]*V/(segment_download_finish_s-segment_request_start_s)))){if (Q<VL){Q=horizon*VL*react;}}//Reset Lagrangian multiplier (Q) to speed up potential bitrate switch based on previous throughput measurement
                 //else if (bitrates[L2AState.lastQuality]<=(c_throughput)){if (Q>=VL){Q=0;}}////********* changed
                 
                 Q=Math.max(0,Q+V*dotmultiplication(bitrates,prev_w)/Math.min(2*bitrates[bitrateCount-1],c_throughput)-(react/2)*V+V*(dotmultiplication(bitrates,diff1)/Math.min(2*bitrates[bitrateCount-1],c_throughput)));      
