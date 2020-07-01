@@ -2,7 +2,7 @@ If you have any questions,  please file an issue or reach out to theo@unified-st
 
 # Assets for ACM MMSys 2020 Grand Challenge on Near Second Latency Bitrate Adaptation 
 
-This repo contains assets for Lear2Adapt-LowLatency, the winning solution of ACM MMSys 2020 Grand Challenge, [Adaptation Algorithm for Near-Second Latency](https://2020.acmmmsys.org/lll_challenge.php). It contains everything you need to build and test low-latency ABR algorithms locally.
+This repo contains assets for Lear2Adapt-LowLatency, the winning solution of ACM MMSys 2020 Grand Challenge on [Adaptation Algorithm for Near-Second Latency](https://2020.acmmmsys.org/lll_challenge.php). It contains everything you need to build and test low-latency ABR algorithms locally.
 
 ## What's in the Box
 
